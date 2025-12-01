@@ -333,6 +333,9 @@ class Capitito_IMS {
         // Enqueue scripts and styles
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
+        
+        // Add custom viewport meta tag for desktop-style display on mobile
+        add_action( 'wp_head', array( $this, 'add_viewport_meta' ), 1 );
 
         // Register shortcodes
         add_action( 'init', array( $this, 'register_shortcodes' ) );
@@ -352,6 +355,14 @@ class Capitito_IMS {
         
         // Add health status to admin bar
         add_action( 'admin_bar_menu', array( $this, 'add_health_status_to_admin_bar' ), 999 );
+    }
+    
+    /**
+     * Add viewport meta tag for desktop-style display on mobile devices
+     * Sets viewport width to 1024px so page shows all content at once without zooming
+     */
+    public function add_viewport_meta() {
+        echo '<meta name="viewport" content="width=1024, initial-scale=0.35, maximum-scale=2.0, user-scalable=yes">' . "\n";
     }
     
     /**
@@ -544,8 +555,14 @@ class Capitito_IMS {
             $ran = true;
         }
 
+        // ✅ Run receipt number migrations
+        if ( version_compare($stored, '2.1.0', '<') || $this->receipt_number_column_missing() ) {
+            $this->run_receipt_number_migrations();
+            $ran = true;
+        }
+
         if ( $ran ) {
-            update_option('capitito_ims_db_version', '2.0.0');
+            update_option('capitito_ims_db_version', '2.1.0');
         }
     }
 
@@ -703,6 +720,46 @@ class Capitito_IMS {
         if ($this->table_exists($orders_ims) && !$this->column_exists($orders_ims, 'offline_synced')) {
             $wpdb->query("ALTER TABLE {$orders_ims} ADD COLUMN offline_synced TINYINT(1) NOT NULL DEFAULT 0 AFTER created_at");
             error_log('[Capitito IMS] Offline Sync Migration: Added offline_synced to capitito_ims_orders');
+        }
+    }
+
+    /**
+     * ✅ Check if receipt_number column is missing
+     */
+    private function receipt_number_column_missing() {
+        global $wpdb;
+        $checks = array(
+            $wpdb->prefix.'capitito_orders',
+            $wpdb->prefix.'capitito_ims_orders',
+        );
+
+        foreach ($checks as $table) {
+            if ($this->table_exists($table) && !$this->column_exists($table, 'receipt_number')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * ✅ Run receipt number migrations
+     */
+    private function run_receipt_number_migrations() {
+        global $wpdb;
+
+        $orders_main = $wpdb->prefix.'capitito_orders';
+        $orders_ims = $wpdb->prefix.'capitito_ims_orders';
+
+        if ($this->table_exists($orders_main) && !$this->column_exists($orders_main, 'receipt_number')) {
+            $wpdb->query("ALTER TABLE {$orders_main} ADD COLUMN receipt_number VARCHAR(20) NULL DEFAULT NULL AFTER id");
+            $wpdb->query("CREATE INDEX idx_receipt_number ON {$orders_main} (receipt_number)");
+            error_log('[Capitito IMS] Receipt Number Migration: Added receipt_number to capitito_orders');
+        }
+
+        if ($this->table_exists($orders_ims) && !$this->column_exists($orders_ims, 'receipt_number')) {
+            $wpdb->query("ALTER TABLE {$orders_ims} ADD COLUMN receipt_number VARCHAR(20) NULL DEFAULT NULL AFTER id");
+            $wpdb->query("CREATE INDEX idx_receipt_number ON {$orders_ims} (receipt_number)");
+            error_log('[Capitito IMS] Receipt Number Migration: Added receipt_number to capitito_ims_orders');
         }
     }
 

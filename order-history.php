@@ -113,6 +113,12 @@ $is_admin = current_user_can( 'manage_capitito_ims' );
             <!-- Order details will be inserted here -->
         </div>
         <div class="modal-footer">
+            <button type="button" class="btn btn-primary reprint-order-btn" id="reprintOrderBtn">
+                <span class="btn-icon">🖨️</span> Print Receipt
+            </button>
+            <button type="button" class="btn btn-secondary" id="downloadHistoryReceiptBtn">
+                <span class="btn-icon">📥</span> Download
+            </button>
             <button type="button" class="btn btn-secondary" data-modal="viewOrderModal">Close</button>
         </div>
     </div>
