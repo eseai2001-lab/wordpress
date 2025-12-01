@@ -3110,14 +3110,45 @@
     
     /**
      * Format currency for ESC/POS thermal printer (ASCII-safe)
-     * Uses "NGN" prefix since thermal printers often don't support Unicode Naira symbol
+     * Uses "N" prefix with commas for readability
      */
     function formatPrinterMoney(amount) {
-        return 'NGN ' + Number(amount || 0).toFixed(2);
+        return 'N' + Number(amount || 0).toLocaleString('en-US', { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        });
+    }
+    
+    /**
+     * Format payment method for display
+     * Converts payment method codes to readable format
+     */
+    function formatPaymentMethod(method) {
+        if (!method) return 'N/A';
+        
+        const methodStr = String(method).toLowerCase();
+        
+        // Handle combo payments
+        if (methodStr.includes('_')) {
+            return methodStr.split('_').map(m => {
+                return m.charAt(0).toUpperCase() + m.slice(1);
+            }).join(' + ');
+        }
+        
+        // Single payment methods
+        const methods = {
+            'cash': 'CASH',
+            'card': 'CARD (POS)',
+            'transfer': 'BANK TRANSFER',
+            'pos': 'CARD (POS)'
+        };
+        
+        return methods[methodStr] || methodStr.toUpperCase();
     }
     
     /**
      * Generate text-based receipt for 80mm thermal printer
+     * With improved formatting, spacing, and readability
      */
     function generateTextReceipt(data, isReprint = false) {
         const line = '='.repeat(RECEIPT_WIDTH);
@@ -3140,25 +3171,30 @@
         // Header
         receipt += line + '\n';
         receipt += padText('CAPITITO STORE', RECEIPT_WIDTH, 'center') + '\n';
-        receipt += padText(isReprint ? 'RECEIPT (REPRINT)' : 'RECEIPT', RECEIPT_WIDTH, 'center') + '\n';
+        receipt += '\n';
+        receipt += padText(isReprint ? '*** RECEIPT (REPRINT) ***' : '*** RECEIPT ***', RECEIPT_WIDTH, 'center') + '\n';
         receipt += line + '\n';
+        receipt += '\n';
         
-        // Receipt info
+        // Receipt info with clear labels
         receipt += 'Receipt #: ' + (data.receipt_number || 'N/A') + '\n';
+        receipt += '\n';
         receipt += 'Date: ' + dateStr + '        Time: ' + timeStr + '\n';
+        receipt += '\n';
         receipt += 'Staff: ' + (data.staff_name || capitito_ims_ajax.user_name || 'Staff') + '\n';
         receipt += dashLine + '\n';
+        receipt += '\n';
         
         // Items header
-        const itemCol = 20;
-        const qtyCol = 4;
-        const priceCol = 10;
-        const totalCol = 12;
+        const itemCol = 18;
+        const qtyCol = 5;
+        const priceCol = 12;
+        const totalCol = 13;
         
-        receipt += padText('Item', itemCol) + 
-                   padText('Qty', qtyCol, 'center') + 
-                   padText('Price', priceCol, 'right') + 
-                   padText('Total', totalCol, 'right') + '\n';
+        receipt += padText('ITEM', itemCol) + 
+                   padText('QTY', qtyCol, 'center') + 
+                   padText('PRICE', priceCol, 'right') + 
+                   padText('AMOUNT', totalCol, 'right') + '\n';
         receipt += dashLine + '\n';
         
         // Items
@@ -3187,7 +3223,9 @@
             }
         });
         
+        receipt += '\n';
         receipt += dashLine + '\n';
+        receipt += '\n';
         
         // Totals
         const labelWidth = 34;
@@ -3202,22 +3240,32 @@
                        padText('-'.repeat(valueWidth), valueWidth) + '\n';
         }
         
-        receipt += padText('GRAND TOTAL:', labelWidth, 'right') + 
+        receipt += '\n';
+        receipt += padText('*** GRAND TOTAL ***', labelWidth, 'right') + 
                    padText(formatReceiptMoney(data.grand_total || (subtotal - totalDiscount)), valueWidth, 'right') + '\n';
+        receipt += '\n';
         receipt += dashLine + '\n';
+        receipt += '\n';
         
-        // Payment method
-        let paymentText = 'Payment: ';
+        // Payment method - formatted properly
+        receipt += 'PAYMENT METHOD: ';
         if (data.payment_breakdown && typeof data.payment_breakdown === 'object') {
             const parts = [];
-            if (data.payment_breakdown.cash > 0) parts.push('Cash ' + formatReceiptMoney(data.payment_breakdown.cash));
-            if (data.payment_breakdown.card > 0) parts.push('Card ' + formatReceiptMoney(data.payment_breakdown.card));
-            if (data.payment_breakdown.transfer > 0) parts.push('Transfer ' + formatReceiptMoney(data.payment_breakdown.transfer));
-            paymentText += parts.join(' + ') || 'N/A';
+            if (data.payment_breakdown.cash > 0) {
+                parts.push('Cash (' + formatReceiptMoney(data.payment_breakdown.cash) + ')');
+            }
+            if (data.payment_breakdown.card > 0) {
+                parts.push('Card (' + formatReceiptMoney(data.payment_breakdown.card) + ')');
+            }
+            if (data.payment_breakdown.transfer > 0) {
+                parts.push('Transfer (' + formatReceiptMoney(data.payment_breakdown.transfer) + ')');
+            }
+            receipt += parts.join(' + ') || 'N/A';
         } else {
-            paymentText += String(data.payment_method || 'N/A').toUpperCase().replace(/_/g, ' + ');
+            receipt += formatPaymentMethod(data.payment_method);
         }
-        receipt += paymentText + '\n';
+        receipt += '\n';
+        receipt += '\n';
         
         // Footer
         receipt += line + '\n';
@@ -3231,7 +3279,7 @@
     
     /**
      * Generate ESC/POS formatted receipt for thermal printer
-     * Uses ASCII-safe currency format for maximum printer compatibility
+     * Uses ASCII-safe currency format with proper spacing and bold amounts
      */
     function generateEscPosReceipt(data, isReprint = false) {
         const now = new Date();
@@ -3240,61 +3288,143 @@
         
         let receipt = ESC_POS.INIT;
         
-        // Header
+        // Header - centered and prominent
         receipt += ESC_POS.ALIGN_CENTER;
         receipt += ESC_POS.DOUBLE_ON;
         receipt += 'CAPITITO STORE\n';
         receipt += ESC_POS.NORMAL_SIZE;
-        receipt += isReprint ? 'RECEIPT (REPRINT)\n' : 'RECEIPT\n';
+        receipt += '\n';
+        receipt += isReprint ? '*** RECEIPT (REPRINT) ***\n' : '*** RECEIPT ***\n';
         receipt += ESC_POS.LINE;
+        receipt += '\n';
         
-        // Receipt info
+        // Receipt info - left aligned with clear spacing
         receipt += ESC_POS.ALIGN_LEFT;
-        receipt += 'Receipt #: ' + (data.receipt_number || 'N/A') + '\n';
-        receipt += 'Date: ' + dateStr + '  Time: ' + timeStr + '\n';
-        receipt += 'Staff: ' + (data.staff_name || capitito_ims_ajax.user_name || 'Staff') + '\n';
-        receipt += ESC_POS.LINE;
-        
-        // Items
         receipt += ESC_POS.BOLD_ON;
-        receipt += 'Item           Qty    Price      Total\n';
+        receipt += 'Receipt #: ';
+        receipt += ESC_POS.BOLD_OFF;
+        receipt += (data.receipt_number || 'N/A') + '\n';
+        receipt += '\n';
+        receipt += ESC_POS.BOLD_ON;
+        receipt += 'Date: ';
+        receipt += ESC_POS.BOLD_OFF;
+        receipt += dateStr + '    ';
+        receipt += ESC_POS.BOLD_ON;
+        receipt += 'Time: ';
+        receipt += ESC_POS.BOLD_OFF;
+        receipt += timeStr + '\n';
+        receipt += '\n';
+        receipt += ESC_POS.BOLD_ON;
+        receipt += 'Staff: ';
+        receipt += ESC_POS.BOLD_OFF;
+        receipt += (data.staff_name || capitito_ims_ajax.user_name || 'Staff') + '\n';
+        receipt += ESC_POS.LINE;
+        receipt += '\n';
+        
+        // Items header - bold
+        receipt += ESC_POS.BOLD_ON;
+        receipt += 'ITEM            QTY   PRICE     AMOUNT\n';
         receipt += ESC_POS.BOLD_OFF;
         receipt += ESC_POS.LINE;
         
+        // Items list with bold amounts
         let grandTotal = 0;
+        let totalDiscount = 0;
         (data.items || []).forEach(item => {
             const name = (item.item_name || item.name || 'Item').substring(0, 14);
             const qty = item.quantity || 0;
             const price = parseFloat(item.unit_price || item.price || 0);
             const total = parseFloat(item.total || (qty * price));
+            const discount = parseFloat(item.discount_amount || 0);
             grandTotal += total;
+            totalDiscount += discount;
             
-            // Use ASCII-safe formatPrinterMoney for thermal printer
-            receipt += padText(name, 14) + 
-                       padText(qty.toString(), 4, 'center') + 
-                       padText(formatPrinterMoney(price), 12, 'right') + 
-                       padText(formatPrinterMoney(total), 12, 'right') + '\n';
+            // Item name and quantity (normal)
+            receipt += padText(name, 14) + ' ';
+            receipt += padText(qty.toString(), 3, 'center') + ' ';
+            // Price and amount (bold)
+            receipt += ESC_POS.BOLD_ON;
+            receipt += padText(formatPrinterMoney(price), 10, 'right') + ' ';
+            receipt += padText(formatPrinterMoney(total), 10, 'right');
+            receipt += ESC_POS.BOLD_OFF;
+            receipt += '\n';
+            
+            // Show discount if applicable
+            if (discount > 0) {
+                receipt += '  Discount: ';
+                receipt += ESC_POS.BOLD_ON;
+                receipt += '-' + formatPrinterMoney(discount);
+                receipt += ESC_POS.BOLD_OFF;
+                receipt += '\n';
+            }
         });
         
+        receipt += '\n';
         receipt += ESC_POS.LINE;
+        receipt += '\n';
         
-        // Total
+        // Totals section - right aligned with bold amounts
         receipt += ESC_POS.ALIGN_RIGHT;
+        
+        // Show subtotal and discount if there are discounts
+        if (totalDiscount > 0) {
+            receipt += 'Subtotal:   ';
+            receipt += ESC_POS.BOLD_ON;
+            receipt += formatPrinterMoney(grandTotal + totalDiscount);
+            receipt += ESC_POS.BOLD_OFF;
+            receipt += '\n';
+            
+            receipt += 'Discount:   ';
+            receipt += ESC_POS.BOLD_ON;
+            receipt += '-' + formatPrinterMoney(totalDiscount);
+            receipt += ESC_POS.BOLD_OFF;
+            receipt += '\n';
+            receipt += '                    --------\n';
+        }
+        
+        // Grand total - prominent with double height
+        receipt += '\n';
         receipt += ESC_POS.BOLD_ON;
         receipt += ESC_POS.DOUBLE_HEIGHT_ON;
-        receipt += 'TOTAL: ' + formatPrinterMoney(data.grand_total || grandTotal) + '\n';
+        receipt += 'GRAND TOTAL: ' + formatPrinterMoney(data.grand_total || grandTotal) + '\n';
         receipt += ESC_POS.NORMAL_SIZE;
         receipt += ESC_POS.BOLD_OFF;
-        
-        // Payment
-        receipt += ESC_POS.ALIGN_LEFT;
-        receipt += 'Payment: ' + String(data.payment_method || 'N/A').toUpperCase().replace(/_/g, ' + ') + '\n';
-        
-        // Footer
-        receipt += ESC_POS.ALIGN_CENTER;
+        receipt += '\n';
         receipt += ESC_POS.LINE;
+        receipt += '\n';
+        
+        // Payment method - clearly formatted
+        receipt += ESC_POS.ALIGN_LEFT;
+        receipt += ESC_POS.BOLD_ON;
+        receipt += 'PAYMENT METHOD: ';
+        receipt += ESC_POS.BOLD_OFF;
+        
+        // Format payment breakdown if available
+        if (data.payment_breakdown && typeof data.payment_breakdown === 'object') {
+            const parts = [];
+            if (data.payment_breakdown.cash > 0) {
+                parts.push('Cash (' + formatPrinterMoney(data.payment_breakdown.cash) + ')');
+            }
+            if (data.payment_breakdown.card > 0) {
+                parts.push('Card (' + formatPrinterMoney(data.payment_breakdown.card) + ')');
+            }
+            if (data.payment_breakdown.transfer > 0) {
+                parts.push('Transfer (' + formatPrinterMoney(data.payment_breakdown.transfer) + ')');
+            }
+            receipt += parts.join(' + ') || 'N/A';
+        } else {
+            receipt += formatPaymentMethod(data.payment_method);
+        }
+        receipt += '\n';
+        receipt += '\n';
+        receipt += ESC_POS.LINE;
+        receipt += '\n';
+        
+        // Footer - centered
+        receipt += ESC_POS.ALIGN_CENTER;
         receipt += 'Thank you for your purchase!\n';
         receipt += 'Please come again\n';
+        receipt += '\n';
         receipt += ESC_POS.LINE;
         
         // Feed and cut
