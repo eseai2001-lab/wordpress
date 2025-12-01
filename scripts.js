@@ -3315,12 +3315,17 @@
             showNotification('Scanning for Bluetooth printers...', 'info');
             
             // Request Bluetooth device with printer service
+            // Using acceptAllDevices to support maximum printer compatibility
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: [
-                    '000018f0-0000-1000-8000-00805f9b34fb', // Common printer service
-                    '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Common printer service 2
-                    'e7810a71-73ae-499d-8c15-faa9aef0c3f2'  // Another common printer service
+                    // Common Bluetooth printer service UUIDs used by various manufacturers:
+                    // - 000018f0: Standard Serial Port Profile (SPP) - Most ESC/POS printers
+                    // - 49535343: Microchip/Nordic UART Service - Many portable printers
+                    // - e7810a71: Custom service used by some Chinese thermal printers
+                    '000018f0-0000-1000-8000-00805f9b34fb',
+                    '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+                    'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
                 ]
             });
             
@@ -3331,7 +3336,7 @@
             // Try to find a writable characteristic
             let characteristic = null;
             
-            // Common printer service UUIDs to try
+            // Try each common printer service UUID until we find a writable characteristic
             const serviceUUIDs = [
                 '000018f0-0000-1000-8000-00805f9b34fb',
                 '49535343-fe7d-4ae5-8fa9-9fafd205e455',
@@ -3365,7 +3370,8 @@
             const encoder = new TextEncoder();
             const data = encoder.encode(receiptText);
             
-            // Send data in chunks (BLE has size limits)
+            // BLE has a maximum transmission unit (MTU) limit, typically 20-23 bytes
+            // for older devices. We use 20 bytes to ensure maximum compatibility.
             const chunkSize = 20;
             for (let i = 0; i < data.length; i += chunkSize) {
                 const chunk = data.slice(i, i + chunkSize);
@@ -3374,7 +3380,8 @@
                 } else {
                     await characteristic.writeValue(chunk);
                 }
-                // Small delay between chunks
+                // 50ms delay between chunks prevents buffer overflow on slower
+                // thermal printers and ensures reliable data transmission
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
             
