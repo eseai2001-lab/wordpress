@@ -505,7 +505,7 @@
                 success: function(response) {
                     if (response.success) {
                         showNotification(response.data.message || 'Order created successfully', 'success');
-                        displayOrderConfirmation(response.data.order_id, orderItems, paymentMethod, paymentBreakdown, grandTotal, totalDiscount);
+                        displayOrderConfirmation(response.data.order_id, response.data.receipt_number, orderItems, paymentMethod, paymentBreakdown, grandTotal, totalDiscount);
                         resetOrderForm();
 
                         // Trigger manual stock sync per item
@@ -571,9 +571,22 @@
             $('.payment-split-input, #paymentBreakdownSection input, #cashAmount, #cardAmount, #transferAmount').val('');
         }
 
-        function displayOrderConfirmation(orderId, items, paymentMethod, paymentBreakdown, grandTotal, totalDiscount) {
+        function displayOrderConfirmation(orderId, receiptNumber, items, paymentMethod, paymentBreakdown, grandTotal, totalDiscount) {
             const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
             const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            // Store receipt data for printing
+            window.setReceiptData({
+                order_id: orderId,
+                receipt_number: receiptNumber,
+                items: items,
+                payment_method: paymentMethod,
+                payment_breakdown: paymentBreakdown,
+                grand_total: grandTotal,
+                total_discount: totalDiscount,
+                staff_name: capitito_ims_ajax.user_name,
+                created_at: new Date().toISOString()
+            });
 
             let itemsHtml = '';
             items.forEach(item => {
@@ -612,6 +625,11 @@
                 ? `<p style="margin: 5px 0; color: #D02223;">💰 Total Discount: <strong>₦${money(totalDiscount)}</strong></p>`
                 : '';
 
+            // Display receipt number if available
+            const receiptNumHtml = receiptNumber 
+                ? `<div><strong>Receipt #:</strong> ${receiptNumber}</div>`
+                : '';
+
             const confirmationHtml = `
                 <div style="max-width: 800px; margin: 0 auto;">
                     <div style="text-align: center; margin-bottom: 30px;">
@@ -623,10 +641,11 @@
                             <div><strong>Order ID:</strong> #${orderId}</div>
                             <div><strong>Date:</strong> ${currentDate}</div>
                         </div>
-                        <div style="display: flex; justify-content: space-between;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                             <div><strong>Staff:</strong> ${capitito_ims_ajax.user_name}</div>
                             <div><strong>Time:</strong> ${currentTime}</div>
                         </div>
+                        ${receiptNumHtml ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">${receiptNumHtml}</div>` : ''}
                     </div>
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                         <thead>
@@ -757,6 +776,9 @@
                 <button class="btn btn-sm btn-secondary view-order-btn" data-order-id="${order.id}">
                     👁️ View
                 </button>
+                <button class="btn btn-sm btn-secondary print-order-btn" data-order-id="${order.id}">
+                    🖨️ Print
+                </button>
                 ${isAdmin ? `
                     <button class="btn btn-sm btn-secondary edit-order-btn" data-order-id="${order.id}">
                         ✏️ Edit
@@ -768,10 +790,11 @@
             `;
 
             const methodLabel = formatPaymentMethodLabel(order.payment_method);
+            const receiptNum = order.receipt_number ? `<br><small style="color:#666;">${order.receipt_number}</small>` : '';
 
             tbody.append(`
                 <tr>
-                    <td><strong>#${order.id}</strong></td>
+                    <td><strong>#${order.id}</strong>${receiptNum}</td>
                     <td>${dateStr}</td>
                     <td>${timeStr}</td>
                     <td>${order.staff_name}</td>
@@ -801,6 +824,9 @@
     }
 
     function displayOrderDetails(order) {
+        // Store order data for reprint functionality
+        window.setHistoryOrderData(order);
+
         let itemsHtml = '';
         (order.items || []).forEach(item => {
             itemsHtml += `
@@ -839,11 +865,15 @@
         }
 
         const orderDate = new Date(order.created_at);
+        const receiptNumHtml = order.receipt_number 
+            ? `<p><strong>Receipt #:</strong> ${order.receipt_number}</p>` 
+            : '';
 
         const detailsHtml = `
             <div class="order-details">
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     <p><strong>Order ID:</strong> #${order.id}</p>
+                    ${receiptNumHtml}
                     <p><strong>Date:</strong> ${orderDate.toLocaleDateString()}</p>
                     <p><strong>Time:</strong> ${orderDate.toLocaleTimeString()}</p>
                     <p><strong>Staff:</strong> ${order.staff_name}</p>
@@ -3020,5 +3050,536 @@
             });
         }, 4000);
     }
+
+    // ========================================
+    // BLUETOOTH THERMAL PRINTER SUPPORT
+    // ========================================
+    
+    // Store current order data for printing
+    let currentReceiptData = null;
+    
+    // ESC/POS Commands for thermal printers
+    const ESC_POS = {
+        INIT: '\x1B\x40',                    // Initialize printer
+        ALIGN_CENTER: '\x1B\x61\x01',        // Center alignment
+        ALIGN_LEFT: '\x1B\x61\x00',          // Left alignment
+        ALIGN_RIGHT: '\x1B\x61\x02',         // Right alignment
+        BOLD_ON: '\x1B\x45\x01',             // Bold on
+        BOLD_OFF: '\x1B\x45\x00',            // Bold off
+        DOUBLE_HEIGHT_ON: '\x1B\x21\x10',    // Double height on
+        DOUBLE_WIDTH_ON: '\x1B\x21\x20',     // Double width on
+        DOUBLE_ON: '\x1B\x21\x30',           // Double height and width
+        NORMAL_SIZE: '\x1B\x21\x00',         // Normal size
+        FEED: '\x1B\x64\x02',                // Feed 2 lines
+        CUT: '\x1D\x56\x00',                 // Full cut
+        PARTIAL_CUT: '\x1D\x56\x01',         // Partial cut
+        LINE: '------------------------------------------------\n'
+    };
+    
+    // Character width for 80mm paper (approximately 48 characters)
+    const RECEIPT_WIDTH = 48;
+    
+    /**
+     * Format text to fixed width for receipt
+     */
+    function padText(text, width, align = 'left') {
+        text = String(text || '');
+        if (text.length >= width) {
+            return text.substring(0, width);
+        }
+        const padding = width - text.length;
+        if (align === 'center') {
+            const leftPad = Math.floor(padding / 2);
+            const rightPad = padding - leftPad;
+            return ' '.repeat(leftPad) + text + ' '.repeat(rightPad);
+        } else if (align === 'right') {
+            return ' '.repeat(padding) + text;
+        }
+        return text + ' '.repeat(padding);
+    }
+    
+    /**
+     * Format currency for receipt
+     */
+    function formatReceiptMoney(amount) {
+        return '₦' + Number(amount || 0).toLocaleString('en-US', { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        });
+    }
+    
+    /**
+     * Generate text-based receipt for 80mm thermal printer
+     */
+    function generateTextReceipt(data, isReprint = false) {
+        const line = '='.repeat(RECEIPT_WIDTH);
+        const dashLine = '-'.repeat(RECEIPT_WIDTH);
+        
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric' 
+        });
+        const timeStr = now.toLocaleTimeString('en-GB', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+        });
+        
+        let receipt = '';
+        
+        // Header
+        receipt += line + '\n';
+        receipt += padText('CAPITITO STORE', RECEIPT_WIDTH, 'center') + '\n';
+        receipt += padText(isReprint ? 'RECEIPT (REPRINT)' : 'RECEIPT', RECEIPT_WIDTH, 'center') + '\n';
+        receipt += line + '\n';
+        
+        // Receipt info
+        receipt += 'Receipt #: ' + (data.receipt_number || 'N/A') + '\n';
+        receipt += 'Date: ' + dateStr + '        Time: ' + timeStr + '\n';
+        receipt += 'Staff: ' + (data.staff_name || capitito_ims_ajax.user_name || 'Staff') + '\n';
+        receipt += dashLine + '\n';
+        
+        // Items header
+        const itemCol = 20;
+        const qtyCol = 4;
+        const priceCol = 10;
+        const totalCol = 12;
+        
+        receipt += padText('Item', itemCol) + 
+                   padText('Qty', qtyCol, 'center') + 
+                   padText('Price', priceCol, 'right') + 
+                   padText('Total', totalCol, 'right') + '\n';
+        receipt += dashLine + '\n';
+        
+        // Items
+        let subtotal = 0;
+        let totalDiscount = 0;
+        
+        (data.items || []).forEach(item => {
+            const itemName = (item.item_name || item.name || 'Item').substring(0, itemCol);
+            const qty = item.quantity || 0;
+            const price = parseFloat(item.unit_price || item.price || 0);
+            const itemTotal = parseFloat(item.total || (qty * price));
+            const discount = parseFloat(item.discount_amount || 0);
+            
+            subtotal += itemTotal + discount;
+            totalDiscount += discount;
+            
+            receipt += padText(itemName, itemCol) + 
+                       padText(qty.toString(), qtyCol, 'center') + 
+                       padText(formatReceiptMoney(price), priceCol, 'right') + 
+                       padText(formatReceiptMoney(itemTotal), totalCol, 'right') + '\n';
+            
+            // Show discount if applicable
+            if (discount > 0) {
+                receipt += padText('  Discount:', itemCol + qtyCol) + 
+                           padText('-' + formatReceiptMoney(discount), priceCol + totalCol, 'right') + '\n';
+            }
+        });
+        
+        receipt += dashLine + '\n';
+        
+        // Totals
+        const labelWidth = 34;
+        const valueWidth = 14;
+        
+        if (totalDiscount > 0) {
+            receipt += padText('Subtotal:', labelWidth, 'right') + 
+                       padText(formatReceiptMoney(subtotal), valueWidth, 'right') + '\n';
+            receipt += padText('Discount:', labelWidth, 'right') + 
+                       padText('-' + formatReceiptMoney(totalDiscount), valueWidth, 'right') + '\n';
+            receipt += padText('', labelWidth, 'right') + 
+                       padText('-'.repeat(valueWidth), valueWidth) + '\n';
+        }
+        
+        receipt += padText('GRAND TOTAL:', labelWidth, 'right') + 
+                   padText(formatReceiptMoney(data.grand_total || (subtotal - totalDiscount)), valueWidth, 'right') + '\n';
+        receipt += dashLine + '\n';
+        
+        // Payment method
+        let paymentText = 'Payment: ';
+        if (data.payment_breakdown && typeof data.payment_breakdown === 'object') {
+            const parts = [];
+            if (data.payment_breakdown.cash > 0) parts.push('Cash ' + formatReceiptMoney(data.payment_breakdown.cash));
+            if (data.payment_breakdown.card > 0) parts.push('Card ' + formatReceiptMoney(data.payment_breakdown.card));
+            if (data.payment_breakdown.transfer > 0) parts.push('Transfer ' + formatReceiptMoney(data.payment_breakdown.transfer));
+            paymentText += parts.join(' + ') || 'N/A';
+        } else {
+            paymentText += String(data.payment_method || 'N/A').toUpperCase().replace(/_/g, ' + ');
+        }
+        receipt += paymentText + '\n';
+        
+        // Footer
+        receipt += line + '\n';
+        receipt += padText('Thank you for your purchase!', RECEIPT_WIDTH, 'center') + '\n';
+        receipt += padText('Please come again', RECEIPT_WIDTH, 'center') + '\n';
+        receipt += line + '\n';
+        receipt += '\n\n\n';
+        
+        return receipt;
+    }
+    
+    /**
+     * Generate ESC/POS formatted receipt for thermal printer
+     */
+    function generateEscPosReceipt(data, isReprint = false) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB');
+        const timeStr = now.toLocaleTimeString('en-GB');
+        
+        let receipt = ESC_POS.INIT;
+        
+        // Header
+        receipt += ESC_POS.ALIGN_CENTER;
+        receipt += ESC_POS.DOUBLE_ON;
+        receipt += 'CAPITITO STORE\n';
+        receipt += ESC_POS.NORMAL_SIZE;
+        receipt += isReprint ? 'RECEIPT (REPRINT)\n' : 'RECEIPT\n';
+        receipt += ESC_POS.LINE;
+        
+        // Receipt info
+        receipt += ESC_POS.ALIGN_LEFT;
+        receipt += 'Receipt #: ' + (data.receipt_number || 'N/A') + '\n';
+        receipt += 'Date: ' + dateStr + '  Time: ' + timeStr + '\n';
+        receipt += 'Staff: ' + (data.staff_name || capitito_ims_ajax.user_name || 'Staff') + '\n';
+        receipt += ESC_POS.LINE;
+        
+        // Items
+        receipt += ESC_POS.BOLD_ON;
+        receipt += 'Item           Qty    Price      Total\n';
+        receipt += ESC_POS.BOLD_OFF;
+        receipt += ESC_POS.LINE;
+        
+        let grandTotal = 0;
+        (data.items || []).forEach(item => {
+            const name = (item.item_name || item.name || 'Item').substring(0, 14);
+            const qty = item.quantity || 0;
+            const price = parseFloat(item.unit_price || item.price || 0);
+            const total = parseFloat(item.total || (qty * price));
+            grandTotal += total;
+            
+            receipt += padText(name, 14) + 
+                       padText(qty.toString(), 4, 'center') + 
+                       padText(formatReceiptMoney(price), 10, 'right') + 
+                       padText(formatReceiptMoney(total), 10, 'right') + '\n';
+        });
+        
+        receipt += ESC_POS.LINE;
+        
+        // Total
+        receipt += ESC_POS.ALIGN_RIGHT;
+        receipt += ESC_POS.BOLD_ON;
+        receipt += ESC_POS.DOUBLE_HEIGHT_ON;
+        receipt += 'TOTAL: ' + formatReceiptMoney(data.grand_total || grandTotal) + '\n';
+        receipt += ESC_POS.NORMAL_SIZE;
+        receipt += ESC_POS.BOLD_OFF;
+        
+        // Payment
+        receipt += ESC_POS.ALIGN_LEFT;
+        receipt += 'Payment: ' + String(data.payment_method || 'N/A').toUpperCase().replace(/_/g, ' + ') + '\n';
+        
+        // Footer
+        receipt += ESC_POS.ALIGN_CENTER;
+        receipt += ESC_POS.LINE;
+        receipt += 'Thank you for your purchase!\n';
+        receipt += 'Please come again\n';
+        receipt += ESC_POS.LINE;
+        
+        // Feed and cut
+        receipt += ESC_POS.FEED;
+        receipt += ESC_POS.PARTIAL_CUT;
+        
+        return receipt;
+    }
+    
+    /**
+     * Check if Web Bluetooth API is available
+     */
+    function isBluetoothSupported() {
+        return navigator.bluetooth !== undefined;
+    }
+    
+    /**
+     * Connect to Bluetooth printer and print receipt
+     */
+    async function printViaBluetooth(receiptData, isReprint = false) {
+        if (!isBluetoothSupported()) {
+            showNotification('Bluetooth not supported. Using browser print...', 'warning');
+            fallbackToBrowserPrint(receiptData, isReprint);
+            return;
+        }
+        
+        try {
+            showNotification('Scanning for Bluetooth printers...', 'info');
+            
+            // Request Bluetooth device with printer service
+            const device = await navigator.bluetooth.requestDevice({
+                acceptAllDevices: true,
+                optionalServices: [
+                    '000018f0-0000-1000-8000-00805f9b34fb', // Common printer service
+                    '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Common printer service 2
+                    'e7810a71-73ae-499d-8c15-faa9aef0c3f2'  // Another common printer service
+                ]
+            });
+            
+            showNotification('Connecting to ' + device.name + '...', 'info');
+            
+            const server = await device.gatt.connect();
+            
+            // Try to find a writable characteristic
+            let characteristic = null;
+            
+            // Common printer service UUIDs to try
+            const serviceUUIDs = [
+                '000018f0-0000-1000-8000-00805f9b34fb',
+                '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+                'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
+            ];
+            
+            for (const serviceUUID of serviceUUIDs) {
+                try {
+                    const service = await server.getPrimaryService(serviceUUID);
+                    const characteristics = await service.getCharacteristics();
+                    
+                    for (const char of characteristics) {
+                        if (char.properties.write || char.properties.writeWithoutResponse) {
+                            characteristic = char;
+                            break;
+                        }
+                    }
+                    
+                    if (characteristic) break;
+                } catch (e) {
+                    // Continue trying other services
+                }
+            }
+            
+            if (!characteristic) {
+                throw new Error('No writable characteristic found on printer');
+            }
+            
+            // Generate ESC/POS receipt
+            const receiptText = generateEscPosReceipt(receiptData, isReprint);
+            const encoder = new TextEncoder();
+            const data = encoder.encode(receiptText);
+            
+            // Send data in chunks (BLE has size limits)
+            const chunkSize = 20;
+            for (let i = 0; i < data.length; i += chunkSize) {
+                const chunk = data.slice(i, i + chunkSize);
+                if (characteristic.properties.writeWithoutResponse) {
+                    await characteristic.writeValueWithoutResponse(chunk);
+                } else {
+                    await characteristic.writeValue(chunk);
+                }
+                // Small delay between chunks
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            
+            showNotification('Receipt printed successfully!', 'success');
+            
+            // Disconnect
+            device.gatt.disconnect();
+            
+        } catch (error) {
+            console.error('Bluetooth print error:', error);
+            
+            if (error.name === 'NotFoundError') {
+                showNotification('No Bluetooth printer selected. Using browser print...', 'warning');
+            } else {
+                showNotification('Bluetooth error: ' + error.message + '. Using browser print...', 'warning');
+            }
+            
+            fallbackToBrowserPrint(receiptData, isReprint);
+        }
+    }
+    
+    /**
+     * Fallback to browser print dialog
+     */
+    function fallbackToBrowserPrint(receiptData, isReprint = false) {
+        const receiptText = generateTextReceipt(receiptData, isReprint);
+        
+        // Create a print window with the receipt
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Receipt</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        font-family: 'Courier New', Courier, monospace;
+                        font-size: 12px;
+                        line-height: 1.4;
+                        padding: 10px;
+                        width: 80mm;
+                        max-width: 100%;
+                    }
+                    pre {
+                        white-space: pre-wrap;
+                        word-wrap: break-word;
+                        font-family: inherit;
+                        font-size: inherit;
+                    }
+                    @media print {
+                        body {
+                            width: 80mm;
+                            padding: 0;
+                            margin: 0;
+                        }
+                        @page {
+                            size: 80mm auto;
+                            margin: 0;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <pre>${receiptText}</pre>
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        window.onafterprint = function() {
+                            window.close();
+                        };
+                    };
+                </script>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+    }
+    
+    /**
+     * Download receipt as text file
+     */
+    function downloadReceiptFile(receiptData, isReprint = false) {
+        const receiptText = generateTextReceipt(receiptData, isReprint);
+        const filename = 'receipt_' + (receiptData.receipt_number || receiptData.order_id || 'order') + '.txt';
+        
+        const blob = new Blob([receiptText], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Receipt downloaded: ' + filename, 'success');
+    }
+    
+    /**
+     * Print receipt (tries Bluetooth first, then browser)
+     */
+    window.printReceipt = function() {
+        if (!currentReceiptData) {
+            showNotification('No receipt data available', 'error');
+            return;
+        }
+        
+        printViaBluetooth(currentReceiptData, false);
+    };
+    
+    /**
+     * Download receipt
+     */
+    window.downloadReceipt = function() {
+        if (!currentReceiptData) {
+            showNotification('No receipt data available', 'error');
+            return;
+        }
+        
+        downloadReceiptFile(currentReceiptData, false);
+    };
+    
+    /**
+     * Store receipt data for printing (called after order confirmation)
+     */
+    window.setReceiptData = function(data) {
+        currentReceiptData = data;
+    };
+    
+    /**
+     * Reprint receipt from order history
+     */
+    window.reprintReceipt = function(orderData) {
+        if (!orderData) {
+            showNotification('No order data available for reprint', 'error');
+            return;
+        }
+        
+        printViaBluetooth(orderData, true);
+    };
+    
+    /**
+     * Download receipt from order history
+     */
+    window.downloadHistoryReceipt = function(orderData) {
+        if (!orderData) {
+            showNotification('No order data available', 'error');
+            return;
+        }
+        
+        downloadReceiptFile(orderData, true);
+    };
+    
+    // Store current order for history reprint
+    let currentHistoryOrder = null;
+    
+    window.setHistoryOrderData = function(data) {
+        currentHistoryOrder = data;
+    };
+    
+    // Handle reprint button in view order modal
+    $(document).on('click', '#reprintOrderBtn', function() {
+        if (currentHistoryOrder) {
+            printViaBluetooth(currentHistoryOrder, true);
+        } else {
+            showNotification('No order data available for reprint', 'error');
+        }
+    });
+    
+    // Handle download button in view order modal
+    $(document).on('click', '#downloadHistoryReceiptBtn', function() {
+        if (currentHistoryOrder) {
+            downloadReceiptFile(currentHistoryOrder, true);
+        } else {
+            showNotification('No order data available', 'error');
+        }
+    });
+    
+    // Handle print button in order history table rows
+    $(document).on('click', '.print-order-btn', function() {
+        const orderId = $(this).data('order-id');
+        
+        $.ajax({
+            url: capitito_ims_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'capitito_ims_get_order',
+                nonce: capitito_ims_ajax.nonce,
+                order_id: orderId
+            },
+            success: function(response) {
+                if (response.success) {
+                    printViaBluetooth(response.data, true);
+                } else {
+                    showNotification('Failed to load order data', 'error');
+                }
+            },
+            error: function() {
+                showNotification('Error loading order data', 'error');
+            }
+        });
+    });
 
 })(jQuery);

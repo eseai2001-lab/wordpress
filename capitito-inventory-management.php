@@ -544,8 +544,14 @@ class Capitito_IMS {
             $ran = true;
         }
 
+        // ✅ Run receipt number migrations
+        if ( version_compare($stored, '2.1.0', '<') || $this->receipt_number_column_missing() ) {
+            $this->run_receipt_number_migrations();
+            $ran = true;
+        }
+
         if ( $ran ) {
-            update_option('capitito_ims_db_version', '2.0.0');
+            update_option('capitito_ims_db_version', '2.1.0');
         }
     }
 
@@ -703,6 +709,46 @@ class Capitito_IMS {
         if ($this->table_exists($orders_ims) && !$this->column_exists($orders_ims, 'offline_synced')) {
             $wpdb->query("ALTER TABLE {$orders_ims} ADD COLUMN offline_synced TINYINT(1) NOT NULL DEFAULT 0 AFTER created_at");
             error_log('[Capitito IMS] Offline Sync Migration: Added offline_synced to capitito_ims_orders');
+        }
+    }
+
+    /**
+     * ✅ Check if receipt_number column is missing
+     */
+    private function receipt_number_column_missing() {
+        global $wpdb;
+        $checks = array(
+            $wpdb->prefix.'capitito_orders',
+            $wpdb->prefix.'capitito_ims_orders',
+        );
+
+        foreach ($checks as $table) {
+            if ($this->table_exists($table) && !$this->column_exists($table, 'receipt_number')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * ✅ Run receipt number migrations
+     */
+    private function run_receipt_number_migrations() {
+        global $wpdb;
+
+        $orders_main = $wpdb->prefix.'capitito_orders';
+        $orders_ims = $wpdb->prefix.'capitito_ims_orders';
+
+        if ($this->table_exists($orders_main) && !$this->column_exists($orders_main, 'receipt_number')) {
+            $wpdb->query("ALTER TABLE {$orders_main} ADD COLUMN receipt_number VARCHAR(20) NULL DEFAULT NULL AFTER id");
+            $wpdb->query("CREATE INDEX idx_receipt_number ON {$orders_main} (receipt_number)");
+            error_log('[Capitito IMS] Receipt Number Migration: Added receipt_number to capitito_orders');
+        }
+
+        if ($this->table_exists($orders_ims) && !$this->column_exists($orders_ims, 'receipt_number')) {
+            $wpdb->query("ALTER TABLE {$orders_ims} ADD COLUMN receipt_number VARCHAR(20) NULL DEFAULT NULL AFTER id");
+            $wpdb->query("CREATE INDEX idx_receipt_number ON {$orders_ims} (receipt_number)");
+            error_log('[Capitito IMS] Receipt Number Migration: Added receipt_number to capitito_ims_orders');
         }
     }
 

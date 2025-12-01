@@ -154,6 +154,18 @@ class Capitito_IMS_Orders {
             }
         }
 
+        // Generate unique receipt number before insert if column exists
+        $receipt_number = null;
+        if (self::column_exists($order_table, 'receipt_number')) {
+            $receipt_number = self::generate_receipt_number($order_table, $today);
+            $order_data['receipt_number'] = $receipt_number;
+            // Rebuild format array
+            $order_format = array();
+            foreach (array_keys($order_data) as $k) {
+                $order_format[] = ($k === 'staff_id') ? '%d' : (in_array($k, ['grand_total','total_discount']) ? '%f' : '%s');
+            }
+        }
+
         $inserted = $wpdb->insert($order_table, $order_data, $order_format);
         if (!$inserted) {
             wp_send_json_error(array('message'=>'Failed to create order: ' . $wpdb->last_error));
@@ -292,9 +304,38 @@ class Capitito_IMS_Orders {
         }
 
         wp_send_json_success(array(
-            'message'  => 'Order created successfully!',
-            'order_id' => $order_id
+            'message'        => 'Order created successfully!',
+            'order_id'       => $order_id,
+            'receipt_number' => $receipt_number
         ));
+    }
+
+    /**
+     * Generate unique receipt number in format RCP-YYYYMMDD-XXXX
+     */
+    private static function generate_receipt_number($order_table, $date) {
+        global $wpdb;
+        
+        $date_part = str_replace('-', '', $date); // YYYYMMDD
+        $prefix = 'RCP-' . $date_part . '-';
+        
+        // Get the highest sequence number for today
+        $last_receipt = $wpdb->get_var($wpdb->prepare(
+            "SELECT receipt_number FROM {$order_table} 
+             WHERE receipt_number LIKE %s 
+             ORDER BY receipt_number DESC LIMIT 1",
+            $prefix . '%'
+        ));
+        
+        if ($last_receipt) {
+            // Extract the sequence number and increment
+            $seq = intval(substr($last_receipt, -4));
+            $new_seq = $seq + 1;
+        } else {
+            $new_seq = 1;
+        }
+        
+        return $prefix . str_pad($new_seq, 4, '0', STR_PAD_LEFT);
     }
 
     public static function ajax_get_orders() {

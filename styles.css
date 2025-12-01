@@ -1298,3 +1298,105 @@ select:focus {
 .quick-actions-grid .action-card {
   padding-top: 16px !important;
 }
+
+/* ========================================
+   PRINT BUTTON STYLES
+======================================== */
+
+/* Print button styling */
+.print-order-btn,
+.reprint-order-btn {
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%) !important;
+    color: var(--off-white) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+.print-order-btn:hover,
+.reprint-order-btn:hover {
+    background: linear-gradient(135deg, #42a5f5 0%, #2196F3 100%) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: var(--shadow-4), 0 0 15px rgba(33, 150, 243, 0.3) !important;
+}
+
+/* Download button styling */
+#downloadReceiptBtn,
+#downloadHistoryReceiptBtn {
+    background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%) !important;
+    color: var(--off-white) !important;
+}
+
+#downloadReceiptBtn:hover,
+#downloadHistoryReceiptBtn:hover {
+    background: linear-gradient(135deg, #66BB6A 0%, #4CAF50 100%) !important;
+}
+
+/* Modal footer button spacing */
+.modal-footer {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding: var(--space-3);
+    background: var(--neutral-bg);
+    border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* Receipt preview styling for print */
+@media print {
+    .capitito-modal .modal-content {
+        box-shadow: none !important;
+        border: none !important;
+    }
+    
+    .modal-footer,
+    .modal-close,
+    .capitito-ims-header {
+        display: none !important;
+    }
+    
+    .order-details {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+
+/* Print preview in new window */
+.receipt-preview {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 10px;
+    max-width: 80mm;
+    margin: 0 auto;
+}
+
+.receipt-preview pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Bluetooth connection status */
+.bluetooth-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.bluetooth-status.connected {
+    background: rgba(76, 175, 80, 0.1);
+    color: #4CAF50;
+}
+
+.bluetooth-status.scanning {
+    background: rgba(33, 150, 243, 0.1);
+    color: #2196F3;
+}
+
+.bluetooth-status.error {
+    background: rgba(244, 67, 54, 0.1);
+    color: #F44336;
+}

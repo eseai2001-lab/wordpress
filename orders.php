@@ -289,8 +289,11 @@ $user = wp_get_current_user();
             <!-- Order confirmation details will be inserted here -->
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-primary" onclick="window.print()">
-                <span class="btn-icon">🖨️</span> Print
+            <button type="button" class="btn btn-primary" id="printOrderReceiptBtn" onclick="window.printReceipt()">
+                <span class="btn-icon">🖨️</span> Print Receipt
+            </button>
+            <button type="button" class="btn btn-secondary" id="downloadReceiptBtn" onclick="window.downloadReceipt()">
+                <span class="btn-icon">📥</span> Download
             </button>
             <button type="button" class="btn btn-secondary" onclick="location.reload()">
                 New Order
