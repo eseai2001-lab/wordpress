@@ -127,6 +127,7 @@ body {
     margin: 0 auto;
     padding: var(--space-3);
     min-height: 100vh;
+    min-width: 1024px; /* Force desktop layout on all devices */
 }
 
 /* ========================================
@@ -1148,8 +1149,11 @@ select:focus {
 }
 
 /* ========================================
-   RESPONSIVE DESIGN
+   RESPONSIVE DESIGN - DESKTOP ONLY MODE
+   All content displays in desktop layout on all devices
+   (Mobile responsive adjustments disabled for full-width display)
 ======================================== */
+/* Desktop layout enforced on all screen sizes
 @media (max-width: 768px) {
     .capitito-ims-wrapper {
         padding: var(--space-2);
@@ -1195,6 +1199,7 @@ select:focus {
         font-size: 14px;
     }
 }
+*/
 
 /* ========================================
    ACCESSIBILITY
