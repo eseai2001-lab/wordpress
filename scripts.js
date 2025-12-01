@@ -3166,6 +3166,12 @@
             second: '2-digit' 
         });
         
+        // Parse payment breakdown if it's a string
+        let paymentBreakdown = data.payment_breakdown;
+        if (typeof paymentBreakdown === 'string' && paymentBreakdown) {
+            try { paymentBreakdown = JSON.parse(paymentBreakdown); } catch(e) { paymentBreakdown = null; }
+        }
+        
         let receipt = '';
         
         // Header
@@ -3249,20 +3255,22 @@
         
         // Payment method - formatted properly
         receipt += 'PAYMENT METHOD: ';
-        if (data.payment_breakdown && typeof data.payment_breakdown === 'object') {
+        if (paymentBreakdown && typeof paymentBreakdown === 'object' && (paymentBreakdown.cash > 0 || paymentBreakdown.card > 0 || paymentBreakdown.transfer > 0)) {
             const parts = [];
-            if (data.payment_breakdown.cash > 0) {
-                parts.push('Cash (' + formatReceiptMoney(data.payment_breakdown.cash) + ')');
+            if (paymentBreakdown.cash > 0) {
+                parts.push('Cash (' + formatReceiptMoney(paymentBreakdown.cash) + ')');
             }
-            if (data.payment_breakdown.card > 0) {
-                parts.push('Card (' + formatReceiptMoney(data.payment_breakdown.card) + ')');
+            if (paymentBreakdown.card > 0) {
+                parts.push('Card (' + formatReceiptMoney(paymentBreakdown.card) + ')');
             }
-            if (data.payment_breakdown.transfer > 0) {
-                parts.push('Transfer (' + formatReceiptMoney(data.payment_breakdown.transfer) + ')');
+            if (paymentBreakdown.transfer > 0) {
+                parts.push('Transfer (' + formatReceiptMoney(paymentBreakdown.transfer) + ')');
             }
-            receipt += parts.join(' + ') || 'N/A';
-        } else {
+            receipt += parts.join(' + ');
+        } else if (data.payment_method) {
             receipt += formatPaymentMethod(data.payment_method);
+        } else {
+            receipt += 'N/A';
         }
         receipt += '\n';
         receipt += '\n';
@@ -3285,6 +3293,12 @@
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB');
         const timeStr = now.toLocaleTimeString('en-GB');
+        
+        // Parse payment breakdown if it's a string
+        let paymentBreakdown = data.payment_breakdown;
+        if (typeof paymentBreakdown === 'string' && paymentBreakdown) {
+            try { paymentBreakdown = JSON.parse(paymentBreakdown); } catch(e) { paymentBreakdown = null; }
+        }
         
         let receipt = ESC_POS.INIT;
         
@@ -3400,20 +3414,22 @@
         receipt += ESC_POS.BOLD_OFF;
         
         // Format payment breakdown if available
-        if (data.payment_breakdown && typeof data.payment_breakdown === 'object') {
+        if (paymentBreakdown && typeof paymentBreakdown === 'object' && (paymentBreakdown.cash > 0 || paymentBreakdown.card > 0 || paymentBreakdown.transfer > 0)) {
             const parts = [];
-            if (data.payment_breakdown.cash > 0) {
-                parts.push('Cash (' + formatPrinterMoney(data.payment_breakdown.cash) + ')');
+            if (paymentBreakdown.cash > 0) {
+                parts.push('Cash (' + formatPrinterMoney(paymentBreakdown.cash) + ')');
             }
-            if (data.payment_breakdown.card > 0) {
-                parts.push('Card (' + formatPrinterMoney(data.payment_breakdown.card) + ')');
+            if (paymentBreakdown.card > 0) {
+                parts.push('Card (' + formatPrinterMoney(paymentBreakdown.card) + ')');
             }
-            if (data.payment_breakdown.transfer > 0) {
-                parts.push('Transfer (' + formatPrinterMoney(data.payment_breakdown.transfer) + ')');
+            if (paymentBreakdown.transfer > 0) {
+                parts.push('Transfer (' + formatPrinterMoney(paymentBreakdown.transfer) + ')');
             }
-            receipt += parts.join(' + ') || 'N/A';
-        } else {
+            receipt += parts.join(' + ');
+        } else if (data.payment_method) {
             receipt += formatPaymentMethod(data.payment_method);
+        } else {
+            receipt += 'N/A';
         }
         receipt += '\n';
         receipt += '\n';
