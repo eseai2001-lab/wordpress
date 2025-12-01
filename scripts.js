@@ -3099,13 +3099,21 @@
     }
     
     /**
-     * Format currency for receipt
+     * Format currency for receipt (browser/download version with Naira symbol)
      */
     function formatReceiptMoney(amount) {
-        return '₦' + Number(amount || 0).toLocaleString('en-US', { 
+        return 'N' + Number(amount || 0).toLocaleString('en-US', { 
             minimumFractionDigits: 2, 
             maximumFractionDigits: 2 
         });
+    }
+    
+    /**
+     * Format currency for ESC/POS thermal printer (ASCII-safe)
+     * Uses "NGN" prefix since thermal printers often don't support Unicode Naira symbol
+     */
+    function formatPrinterMoney(amount) {
+        return 'NGN ' + Number(amount || 0).toFixed(2);
     }
     
     /**
@@ -3223,6 +3231,7 @@
     
     /**
      * Generate ESC/POS formatted receipt for thermal printer
+     * Uses ASCII-safe currency format for maximum printer compatibility
      */
     function generateEscPosReceipt(data, isReprint = false) {
         const now = new Date();
@@ -3260,10 +3269,11 @@
             const total = parseFloat(item.total || (qty * price));
             grandTotal += total;
             
+            // Use ASCII-safe formatPrinterMoney for thermal printer
             receipt += padText(name, 14) + 
                        padText(qty.toString(), 4, 'center') + 
-                       padText(formatReceiptMoney(price), 10, 'right') + 
-                       padText(formatReceiptMoney(total), 10, 'right') + '\n';
+                       padText(formatPrinterMoney(price), 12, 'right') + 
+                       padText(formatPrinterMoney(total), 12, 'right') + '\n';
         });
         
         receipt += ESC_POS.LINE;
@@ -3272,7 +3282,7 @@
         receipt += ESC_POS.ALIGN_RIGHT;
         receipt += ESC_POS.BOLD_ON;
         receipt += ESC_POS.DOUBLE_HEIGHT_ON;
-        receipt += 'TOTAL: ' + formatReceiptMoney(data.grand_total || grandTotal) + '\n';
+        receipt += 'TOTAL: ' + formatPrinterMoney(data.grand_total || grandTotal) + '\n';
         receipt += ESC_POS.NORMAL_SIZE;
         receipt += ESC_POS.BOLD_OFF;
         
