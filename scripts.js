@@ -3100,22 +3100,23 @@
     
     /**
      * Format currency for receipt (browser/download version with Naira symbol)
+     * No decimal places - whole numbers only
      */
     function formatReceiptMoney(amount) {
-        return 'N' + Number(amount || 0).toLocaleString('en-US', { 
-            minimumFractionDigits: 2, 
-            maximumFractionDigits: 2 
+        return 'N' + Math.round(Number(amount || 0)).toLocaleString('en-US', { 
+            minimumFractionDigits: 0, 
+            maximumFractionDigits: 0 
         });
     }
     
     /**
      * Format currency for ESC/POS thermal printer (ASCII-safe)
-     * Uses "N" prefix with commas for readability
+     * Uses "N" prefix with commas for readability, no decimal places
      */
     function formatPrinterMoney(amount) {
-        return 'N' + Number(amount || 0).toLocaleString('en-US', { 
-            minimumFractionDigits: 2, 
-            maximumFractionDigits: 2 
+        return 'N' + Math.round(Number(amount || 0)).toLocaleString('en-US', { 
+            minimumFractionDigits: 0, 
+            maximumFractionDigits: 0 
         });
     }
     
