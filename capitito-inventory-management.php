@@ -333,6 +333,9 @@ class Capitito_IMS {
         // Enqueue scripts and styles
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
+        
+        // Add custom viewport meta tag for desktop-style display on mobile
+        add_action( 'wp_head', array( $this, 'add_viewport_meta' ), 1 );
 
         // Register shortcodes
         add_action( 'init', array( $this, 'register_shortcodes' ) );
@@ -352,6 +355,14 @@ class Capitito_IMS {
         
         // Add health status to admin bar
         add_action( 'admin_bar_menu', array( $this, 'add_health_status_to_admin_bar' ), 999 );
+    }
+    
+    /**
+     * Add viewport meta tag for desktop-style display on mobile devices
+     * Sets viewport width to 1024px so page shows all content at once without zooming
+     */
+    public function add_viewport_meta() {
+        echo '<meta name="viewport" content="width=1024, initial-scale=0.35, maximum-scale=2.0, user-scalable=yes">' . "\n";
     }
     
     /**
